@@ -107,7 +107,7 @@ use ethcore::{
 use ethereum_types::{H256, U256};
 use fastmap::{H256FastMap, H256FastSet};
 use hash::keccak;
-use network::{self, client_version::ClientVersion, PeerId};
+use network::{self, client_version::ClientVersion, PeerId, ProtocolId};
 use parking_lot::{Mutex, RwLock, RwLockWriteGuard};
 use rand::Rng;
 use rlp::{DecoderError, RlpStream};
@@ -115,6 +115,7 @@ use snapshot::Snapshot;
 use std::{
     cmp,
     collections::{BTreeMap, HashMap, HashSet},
+    str::FromStr,
     sync::mpsc,
     time::{Duration, Instant},
 };
@@ -1274,8 +1275,10 @@ impl ChainSync {
 
     /// Send Status message
     fn send_status(&mut self, io: &mut dyn SyncIo, peer: PeerId) -> Result<(), network::Error> {
-        let eth_protocol_version = io.protocol_version(&ETH_PROTOCOL, peer);
-        let warp_protocol_version = io.protocol_version(&PAR_PROTOCOL, peer);
+        let eth_protocol_version =
+            io.protocol_version(&ProtocolId::from_str(ETH_PROTOCOL).unwrap(), peer);
+        let warp_protocol_version =
+            io.protocol_version(&ProtocolId::from_str(PAR_PROTOCOL).unwrap(), peer);
         let warp_protocol = warp_protocol_version != 0;
         let protocol = if warp_protocol {
             warp_protocol_version

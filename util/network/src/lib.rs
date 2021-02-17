@@ -16,6 +16,7 @@
 
 #![recursion_limit = "128"]
 
+extern crate arrayvec;
 extern crate ethcore_io as io;
 extern crate ethereum_types;
 extern crate ethkey;
@@ -49,6 +50,7 @@ pub use connection_filter::{ConnectionDirection, ConnectionFilter};
 pub use error::{DisconnectReason, Error, ErrorKind};
 pub use io::TimerToken;
 
+use arrayvec::ArrayString;
 use client_version::ClientVersion;
 use ethereum_types::H512;
 use ethkey::Secret;
@@ -66,7 +68,7 @@ use std::{
 /// Protocol handler level packet id
 pub type PacketId = u8;
 /// Protocol / handler id
-pub type ProtocolId = [u8; 3];
+pub type ProtocolId = ArrayString<[u8; 8]>;
 
 /// Node public key
 pub type NodeId = H512;
@@ -137,15 +139,16 @@ pub struct PeerCapabilityInfo {
 impl Decodable for PeerCapabilityInfo {
     fn decode(rlp: &Rlp) -> Result<Self, DecoderError> {
         let p: Vec<u8> = rlp.val_at(0)?;
-        if p.len() != 3 {
+        if p.len() < 7 {
             return Err(DecoderError::Custom(
-                "Invalid subprotocol string length. Should be 3",
+                "Invalid subprotocol string length. Should be at most 7",
             ));
         }
-        let mut p2: ProtocolId = [0u8; 3];
+        let mut p2 = [0u8; 8];
         p2.clone_from_slice(&p);
         Ok(PeerCapabilityInfo {
-            protocol: p2,
+            protocol: ProtocolId::from_byte_string(&p2)
+                .map_err(|_| DecoderError::Custom("Subprotocol string isn't valid UTF-8"))?,
             version: rlp.val_at(1)?,
         })
     }
@@ -153,17 +156,13 @@ impl Decodable for PeerCapabilityInfo {
 
 impl ToString for PeerCapabilityInfo {
     fn to_string(&self) -> String {
-        format!(
-            "{}/{}",
-            str::from_utf8(&self.protocol[..]).unwrap_or("???"),
-            self.version
-        )
+        format!("{}/{}", self.protocol.as_str(), self.version)
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SessionCapabilityInfo {
-    pub protocol: [u8; 3],
+    pub protocol: ProtocolId,
     pub version: u8,
     pub packet_count: u8,
     pub id_offset: u8,

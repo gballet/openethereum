@@ -26,6 +26,7 @@
 
 use api::{ETH_PROTOCOL, PAR_PROTOCOL};
 use network::{PacketId, ProtocolId};
+use std::str::FromStr;
 
 // An enum that defines all known packet ids in the context of
 // synchronization and provides a mechanism to convert from
@@ -83,13 +84,13 @@ impl PacketInfo for SyncPacket {
             //| GetNodeDataPacket
             //| NodeDataPacket
             | GetReceiptsPacket
-            | ReceiptsPacket => ETH_PROTOCOL,
+            | ReceiptsPacket => ProtocolId::from_str(ETH_PROTOCOL).unwrap(),
 
             GetSnapshotManifestPacket
             | SnapshotManifestPacket
             | GetSnapshotDataPacket
             | SnapshotDataPacket
-            | ConsensusDataPacket => PAR_PROTOCOL,
+            | ConsensusDataPacket => ProtocolId::from_str(PAR_PROTOCOL).unwrap(),
         }
     }
 

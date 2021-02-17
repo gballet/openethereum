@@ -14,6 +14,9 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenEthereum.  If not, see <http://www.gnu.org/licenses/>.
 
+extern crate arrayvec;
+
+//use arrayvec::ArrayString;
 use bytes::Bytes;
 use devp2p::NetworkService;
 use network::{
@@ -56,9 +59,9 @@ use types::{
 };
 
 /// OpenEthereum sync protocol
-pub const PAR_PROTOCOL: ProtocolId = *b"par";
+pub const PAR_PROTOCOL: &str = "par";
 /// Ethereum sync protocol
-pub const ETH_PROTOCOL: ProtocolId = *b"eth";
+pub const ETH_PROTOCOL: &str = "eth";
 
 /// Determine warp sync status.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -105,7 +108,7 @@ pub struct SyncConfig {
     /// Network ID
     pub network_id: u64,
     /// Main "eth" subprotocol name.
-    pub subprotocol_name: [u8; 3],
+    pub subprotocol_name: ProtocolId,
     /// Fork block to check
     pub fork_block: Option<(BlockNumber, H256)>,
     /// Enable snapshot sync
@@ -118,7 +121,7 @@ impl Default for SyncConfig {
             max_download_ahead_blocks: 20000,
             download_old_blocks: true,
             network_id: 1,
-            subprotocol_name: ETH_PROTOCOL,
+            subprotocol_name: ProtocolId::from_str(ETH_PROTOCOL).unwrap(),
             fork_block: None,
             warp_sync: WarpSync::Disabled,
         }
@@ -231,7 +234,7 @@ pub struct EthSync {
     /// Main (eth/par) protocol handler
     eth_handler: Arc<SyncProtocolHandler>,
     /// The main subprotocol name
-    subprotocol_name: [u8; 3],
+    subprotocol_name: ProtocolId,
     /// Priority tasks notification channel
     priority_tasks: Mutex<mpsc::Sender<PriorityTask>>,
 }
@@ -452,7 +455,7 @@ struct SyncProtocolHandler {
 
 impl NetworkProtocolHandler for SyncProtocolHandler {
     fn initialize(&self, io: &dyn NetworkContext) {
-        if io.subprotocol_name() != PAR_PROTOCOL {
+        if io.subprotocol_name() != ProtocolId::from_str(PAR_PROTOCOL).unwrap() {
             io.register_timer(PEERS_TIMER, Duration::from_millis(700))
                 .expect("Error registering peers timer");
             io.register_timer(MAINTAIN_SYNC_TIMER, Duration::from_millis(1100))
@@ -481,8 +484,11 @@ impl NetworkProtocolHandler for SyncProtocolHandler {
     fn connected(&self, io: &dyn NetworkContext, peer: &PeerId) {
         trace_time!("sync::connected");
         // If warp protocol is supported only allow warp handshake
-        let warp_protocol = io.protocol_version(PAR_PROTOCOL, *peer).unwrap_or(0) != 0;
-        let warp_context = io.subprotocol_name() == PAR_PROTOCOL;
+        let warp_protocol = io
+            .protocol_version(ProtocolId::from_str(PAR_PROTOCOL).unwrap(), *peer)
+            .unwrap_or(0)
+            != 0;
+        let warp_context = io.subprotocol_name() == ProtocolId::from_str(PAR_PROTOCOL).unwrap();
         if warp_protocol == warp_context {
             self.sync.write().on_peer_connected(
                 &mut NetSyncIo::new(io, &*self.chain, &*self.snapshot_service, &self.overlay),
@@ -493,7 +499,7 @@ impl NetworkProtocolHandler for SyncProtocolHandler {
 
     fn disconnected(&self, io: &dyn NetworkContext, peer: &PeerId) {
         trace_time!("sync::disconnected");
-        if io.subprotocol_name() != PAR_PROTOCOL {
+        if io.subprotocol_name() != ProtocolId::from_str(PAR_PROTOCOL).unwrap() {
             self.sync.write().on_peer_aborting(
                 &mut NetSyncIo::new(io, &*self.chain, &*self.snapshot_service, &self.overlay),
                 *peer,
@@ -575,7 +581,7 @@ impl ChainNotify for EthSync {
         self.network
             .register_protocol(
                 self.eth_handler.clone(),
-                PAR_PROTOCOL,
+                ProtocolId::from_str(PAR_PROTOCOL).unwrap(),
                 &[PAR_PROTOCOL_VERSION_1, PAR_PROTOCOL_VERSION_2],
             )
             .unwrap_or_else(|e| warn!("Error registering snapshot sync protocol: {:?}", e));
@@ -587,21 +593,22 @@ impl ChainNotify for EthSync {
     }
 
     fn broadcast(&self, message_type: ChainMessageType) {
-        self.network.with_context(PAR_PROTOCOL, |context| {
-            let mut sync_io = NetSyncIo::new(
-                context,
-                &*self.eth_handler.chain,
-                &*self.eth_handler.snapshot_service,
-                &self.eth_handler.overlay,
-            );
-            match message_type {
-                ChainMessageType::Consensus(message) => self
-                    .eth_handler
-                    .sync
-                    .write()
-                    .propagate_consensus_packet(&mut sync_io, message),
-            }
-        });
+        self.network
+            .with_context(ProtocolId::from_str(PAR_PROTOCOL).unwrap(), |context| {
+                let mut sync_io = NetSyncIo::new(
+                    context,
+                    &*self.eth_handler.chain,
+                    &*self.eth_handler.snapshot_service,
+                    &self.eth_handler.overlay,
+                );
+                match message_type {
+                    ChainMessageType::Consensus(message) => self
+                        .eth_handler
+                        .sync
+                        .write()
+                        .propagate_consensus_packet(&mut sync_io, message),
+                }
+            });
     }
 
     fn transactions_received(&self, txs: &[UnverifiedTransaction], peer_id: PeerId) {
@@ -751,7 +758,7 @@ impl NetworkConfiguration {
             max_peers: self.max_peers,
             min_peers: self.min_peers,
             max_handshakes: self.max_pending_peers,
-            reserved_protocols: hash_map![PAR_PROTOCOL => self.snapshot_peers],
+            reserved_protocols: hash_map![ProtocolId::from_str(PAR_PROTOCOL).unwrap() => self.snapshot_peers],
             reserved_nodes: self.reserved_nodes,
             ip_filter: self.ip_filter,
             non_reserved_mode: if self.allow_non_reserved {
@@ -783,7 +790,10 @@ impl From<BasicNetworkConfiguration> for NetworkConfiguration {
             max_peers: other.max_peers,
             min_peers: other.min_peers,
             max_pending_peers: other.max_handshakes,
-            snapshot_peers: *other.reserved_protocols.get(&PAR_PROTOCOL).unwrap_or(&0),
+            snapshot_peers: *other
+                .reserved_protocols
+                .get(ProtocolId::from_str(PAR_PROTOCOL).unwrap().as_ref())
+                .unwrap_or(&0),
             reserved_nodes: other.reserved_nodes,
             ip_filter: other.ip_filter,
             allow_non_reserved: match other.non_reserved_mode {

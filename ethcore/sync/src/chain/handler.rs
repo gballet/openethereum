@@ -25,10 +25,10 @@ use ethcore::{
 };
 use ethereum_types::{H256, U256};
 use hash::keccak;
-use network::{client_version::ClientVersion, PeerId};
+use network::{client_version::ClientVersion, PeerId, ProtocolId};
 use rlp::Rlp;
 use snapshot::ChunkType;
-use std::{cmp, mem, time::Instant};
+use std::{cmp, mem, str::FromStr, time::Instant};
 use sync_io::SyncIo;
 use types::{block_status::BlockStatus, ids::BlockId, BlockNumber};
 
@@ -669,8 +669,10 @@ impl SyncHandler {
             .next()
             .ok_or(rlp::DecoderError::RlpIsTooShort)?
             .as_val()?;
-        let eth_protocol_version = io.protocol_version(&ETH_PROTOCOL, peer_id);
-        let warp_protocol_version = io.protocol_version(&PAR_PROTOCOL, peer_id);
+        let eth_protocol_version =
+            io.protocol_version(&ProtocolId::from_str(ETH_PROTOCOL).unwrap(), peer_id);
+        let warp_protocol_version =
+            io.protocol_version(&ProtocolId::from_str(PAR_PROTOCOL).unwrap(), peer_id);
         let warp_protocol = warp_protocol_version != 0;
 
         let network_id = r_iter

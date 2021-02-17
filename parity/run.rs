@@ -42,6 +42,7 @@ use jsonrpc_core;
 use metrics::{start_prometheus_metrics, MetricsConfiguration};
 use miner::{external::ExternalMiner, work_notify::WorkPoster};
 use modules;
+use network::ProtocolId;
 use node_filter::NodeFilter;
 use params::{
     fatdb_switch_to_bool, mode_switch_to_bool, tracing_switch_to_bool, AccountsConfig,
@@ -57,6 +58,7 @@ use rpc;
 use rpc_apis;
 use secretstore;
 use signer;
+use std::str::FromStr;
 use sync::{self, SyncConfig};
 use user_defaults::UserDefaults;
 
@@ -230,9 +232,8 @@ pub fn execute(cmd: RunCmd, logger: Arc<RotatingLogger>) -> Result<RunningClient
     if spec.subprotocol_name().len() != 3 {
         warn!("Your chain specification's subprotocol length is not 3. Ignoring.");
     } else {
-        sync_config
-            .subprotocol_name
-            .clone_from_slice(spec.subprotocol_name().as_bytes());
+        sync_config.subprotocol_name =
+            ProtocolId::from_str(spec.subprotocol_name().as_str()).map_err(|e| e.to_string())?;
     }
 
     sync_config.fork_block = spec.fork_block();

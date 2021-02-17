@@ -50,6 +50,8 @@ extern crate kvdb_memorydb;
 extern crate rustc_hex;
 
 #[macro_use]
+extern crate lazy_static;
+#[macro_use]
 extern crate enum_primitive;
 #[macro_use]
 extern crate macros;
